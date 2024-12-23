@@ -3,7 +3,7 @@
 ;; Author: Adam Bobrow
 ;; Maintainer: Adam Bobrow
 ;; Version: 0.0.1
-;; Package-Requires: (treesit)
+;; Package-Requires: (treesit dash)
 ;; Homepage: homepage
 ;; Keywords: jest,js,typescript,tree-sitter
 
@@ -25,12 +25,16 @@
 
 ;;; Code:
 (require 'treesit)
+(require 'dash)
 
 (defvar *latest-test* nil)
+(defcustom jest-ts-mode/jest-command-pattern
+  "IN_MEMORY_DB=true node --inspect=%s ~/source/grain/node_modules/.bin/jest --runInBand --detectOpenHandles --config %sjest.config.ts %s %s"
+  "The command template to execute for running Jest")
 
 ;;;###autoload
 (defun jest-ts-mode/run-tests (describe-only)
-  "Run a specific test from the current file"
+  "Run a specific test from the current file."
   (interactive "P")
   (if-let ((default-directory (locate-dominating-file "./" "jest.config.ts"))
            (test-name (jest-ts-mode/choose--test-with-completion describe-only))
@@ -44,27 +48,29 @@
 
 ;;;###autoload
 (defun jest-ts-mode/rerun-latest-test ()
-  "Run the latest test when exists."
+  "Run the latest test when it exists."
   (interactive)
-  (when *latest-test*
-    (if-let ((default-directory (nth 2 *latest-test*)))
-        (compile (jest-ts-mode/test--command
-                  default-directory
-                  `(:file-name ,(car *latest-test*) :test-name ,(nth 1 *latest-test*)))
-                 'jest-ts-mode/compilation-mode)
-      (error "No jest-config found. default directory: %s" default-directory))))
+  (if-let ((*latest-test*)
+           (default-directory (nth 2 *latest-test*))
+           (file-name (car *latest-test*))
+           (test-name (nth 1 *latest-test*)))
+      (compile (jest-ts-mode/test--command default-directory
+                                           `(:file-name ,file-name
+                                                        :test-name ,test-name))
+               'jest-ts-mode/compilation-mode)
+    (error "No jest-config found. default directory: %s" default-directory)))
 
 ;;;###autoload
 (defun jest-ts-mode/run-test-on-point ()
-  "Run the enclosing test around point"
+  "Run the enclosing test around point."
   (interactive)
-  (if-let ((default-directory (locate-dominating-file "./" "jest.config.ts"))
+  (if-let ((default-directory (or (locate-dominating-file "./" "jest.config.ts")
+                                  (error "No jest-config found. default directory: %s" default-directory)))
            (test-name (jest-ts-mode/get--current-test-name))
            (test-file-name (buffer-file-name)))
       (progn (setq *latest-test* (list test-file-name test-name default-directory))
-             (compile (jest-ts-mode/test--command
-                       default-directory
-                       `(:file-name ,test-file-name :test-name ,test-name))
+             (compile (jest-ts-mode/test--command default-directory
+                                                  `(:file-name ,test-file-name :test-name ,test-name))
                       'jest-ts-mode/compilation-mode))
     (error "No jest-config found. default directory: %s" default-directory)))
 
@@ -78,19 +84,17 @@
 
 (defun jest-ts-mode/test--command (jest-config-dir &optional test-file-name-and-pattern)
   "Create the command to run Jest tests.
-TEST-FILE-NAME-AND-PATTERN is a plist with optional
- `:file-name` and `:test-name`."
+TEST-FILE-NAME-AND-PATTERN is a plist with optional `:file-name` and `:test-name`."
   (let ((file-name (or (plist-get test-file-name-and-pattern :file-name) ""))
         (test-name (plist-get test-file-name-and-pattern :test-name)))
-    (s-trim-right (format
-                   "IN_MEMORY_DB=true node --inspect=%s ~/source/grain/node_modules/.bin/jest --runInBand --detectOpenHandles --config %sjest.config.ts %s %s"
-                   (bob/get-inspect-port)
-                   jest-config-dir
-                   file-name
-                   (if test-name (format "-t \"%s\"" test-name) "")))))
+    (s-trim-right (format jest-ts-mode/jest-command-pattern
+                          (bob/get-inspect-port)
+                          jest-config-dir
+                          file-name
+                          (if test-name (format "-t \"%s\"" test-name) "")))))
 
 (defun jest-ts-mode/is--jest-test-call (node)
-  "Checks if the given NODE is a Jest test function (describe | it | test)."
+  "Check if the given NODE is a Jest test function (describe | it | test)."
   (and (string= (treesit-node-type node) "call_expression")
        (let* ((function-node (treesit-node-child-by-field-name node "function"))
               (function-name (treesit-node-text function-node t)))
@@ -106,18 +110,26 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
                  (test-name-node (treesit-node-child-by-field-name test-node "arguments"))
                  (first-arg-node (treesit-node-child test-name-node 1))
                  (node-type (treesit-node-type first-arg-node)))
-          (when (string= node-type "string")
-            (string-node-string-fragment first-arg-node))))))
+          (string-node-string-fragment first-arg-node)))))
 
 (defun string-node-string-fragment (node)
-  (if (string= (treesit-node-type node) "string")
-      (treesit-node-text (nth 1 (treesit-node-children node)) t)
-    (error "node is not of type string")))
+  (cond 
+   ((string= (treesit-node-type node) "string")
+    (treesit-node-text (nth 1 (treesit-node-children node)) t))
+   ((string= (treesit-node-type node) "binary_expression") (binary--exp-to-string node))
+   (t (error "bad string node type"))))
+
+(defun binary--exp-to-string (node)
+  (mapconcat (lambda (child)
+               (substring-no-properties
+                (treesit-node-text
+                 (get-first-node-by-type child "string_fragment"))))
+             (treesit-node-children node "arguments")))
 
 (defun jest-ts-mode/choose--test-with-completion (&optional describe-only)
   "Choose a test using completion.
 If DESCRIBE-ONLY is non-nil, show only describe blocks."
-  (if-let* ((root-node (treesit-buffer-root-node))
+  (if-let* ((root-node (treesit-buffer-root-node 'typescript))
             (test-tree (jest-ts/map--describe-nodes root-node 0))
             (candidates (jest-ts/flatten--test-tree test-tree))
             (filtered-candidates (if describe-only
@@ -144,24 +156,17 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
   "Extract text from a describe/test node."
   (let* ((args (cadr (treesit-node-children node)))
          (string-node (get-first-node-by-type args "string"))
-         (string-fragment (get-first-node-by-type string-node "string_fragment")))
-    (substring-no-properties (treesit-node-text string-fragment))))
+         (binary-node (get-first-node-by-type args "binary_expression")))
+    (cond (string-node (substring-no-properties
+                        (treesit-node-text (get-first-node-by-type string-node "string_fragment"))))
+          (binary-node (binary--exp-to-string binary-node))
+          (t (error "Bad node type")))))
 
 (defun get-body-node (node)
   "Get the body node from a describe/test node."
   (let* ((args (cadr (treesit-node-children node)))
          (arrow-function (get-first-node-by-type args "arrow_function")))
     (get-first-node-by-type arrow-function "statement_block")))
-
-(defun get-test-content (test-node)
-  "Extract test expectations from TEST-NODE."
-  (let* ((body-node (get-body-node test-node))
-         (expressions (get-nodes-by-type body-node "expression_statement")))
-    (mapcar (lambda (expr)
-              (let ((call-expr (get-first-node-by-type expr "call_expression")))
-                (when call-expr
-                  (treesit-node-text call-expr))))
-            expressions)))
 
 (defun jest-ts/get--call-expressions (root-node call-type)
   "Get all CALL-TYPE nodes from ROOT-NODE."
@@ -180,10 +185,14 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
   "Map describe and test nodes in ROOT-NODE at specified LEVEL."
   (let* ((describe-expressions (jest-ts/get--call-expressions root-node "describe"))
          (all-expressions
-          (->> (append describe-expressions (jest-ts/get--call-expressions root-node "test"))
-               ;; Sort by start position to maintain source order
+          (->> (append describe-expressions
+                       (-filter 'identity
+                                (seq-concatenate 'list
+                                                 (jest-ts/get--call-expressions root-node "test")
+                                                 (jest-ts/get--call-expressions root-node "it"))))
                (-sort (lambda (a b)
-                        (> (treesit-node-index a)
+                        ;; TODO: check this logic
+                        (> (treesit-node-start a)
                            (treesit-node-start b)))))))
     (list
      (cons 'level level)
@@ -205,8 +214,7 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
   (let* ((level (alist-get 'level tree))
          (indent (make-string (* level 2) ?\s))
          (prefix (or prefix ""))
-         (nodes (alist-get 'nodes tree))
-         result)
+         (nodes (alist-get 'nodes tree)))
     (-flatten (mapcar (lambda (node)
                         (pcase (alist-get 'type node)
                           ('describe (if-let ((body (alist-get 'body node)))
@@ -232,9 +240,13 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
                       nodes))))
 
 ;;; tests
+(defvar *jest-ts/test-file-ts-node*
+  (-some-> (read-file (expand-file-name "./jest-sb.test.ts"))
+    (treesit-parse-string 'typescript)))
 
-(defvar *jest-ts/test-file-ts-node* (treesit-parse-string (read-file "./jest-sb.test.ts") 'typescript))
-(defvar *jest-ts/test-file-ts-node-2* (treesit-parse-string (read-file "./jest-sb-2.test.ts") 'typescript))
+(defvar *jest-ts/test-file-ts-node-2*
+  (-some-> (read-file (expand-file-name "./jest-sb-2.test.ts"))
+    (treesit-parse-string 'typescript)))
 
 (ert-deftest jest-ts/create-tests-tree ()
   "Return a list of candidates that represents the test suite hierarchy using indentation and prefixes for test/describe headings"
@@ -294,6 +306,7 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
                    ("  [✅] Describe 1 test 1" . "Describe 1 test 1")
                    ("  [✅] Describe 1 test 2" . "Describe 1 test 2")
                    ("[📘] Describe 2" . "Describe 2")))))
+
 
 (provide 'jest-ts-mode)
 
