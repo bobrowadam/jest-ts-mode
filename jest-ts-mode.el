@@ -126,6 +126,10 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional `:file-name` and `:test-name
                  (get-first-node-by-type child "string_fragment"))))
              (treesit-node-children node "arguments")))
 
+(defun template--node-to-string (node)
+  (mapconcat #'treesit-node-text
+             (treesit-node-children node "arguments")))
+
 (defun jest-ts-mode/choose--test-with-completion (&optional describe-only)
   "Choose a test using completion.
 If DESCRIBE-ONLY is non-nil, show only describe blocks."
@@ -156,11 +160,13 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
   "Extract text from a describe/test node."
   (let* ((args (cadr (treesit-node-children node)))
          (string-node (get-first-node-by-type args "string"))
-         (binary-node (get-first-node-by-type args "binary_expression")))
+         (binary-node (get-first-node-by-type args "binary_expression"))
+         (template-node (get-first-node-by-type args "template_string")))
     (cond (string-node (substring-no-properties
                         (treesit-node-text (get-first-node-by-type string-node "string_fragment"))))
           (binary-node (binary--exp-to-string binary-node))
-          (t (error "Bad node type")))))
+          (template-node (template--node-to-string template-node))
+          (t (error "Bad node type: %s" (treesit-node-text args))))))
 
 (defun get-body-node (node)
   "Get the body node from a describe/test node."
