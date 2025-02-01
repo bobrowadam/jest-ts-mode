@@ -29,8 +29,8 @@
 
 (defvar *latest-test* nil)
 (defcustom jest-ts-mode/jest-command-pattern
-  "IN_MEMORY_DB=true node --inspect=%s ~/source/grain/node_modules/.bin/jest --runInBand --detectOpenHandles --config %sjest.config.ts %s %s"
-  "The command template to execute for running Jest")
+  "IN_MEMORY_DB=true node --inspect=%s ~/source/grain/node_modules/.bin/jest --config %sjest.config.ts %s %s"
+  "The command template to execute for running Jest with profiling")
 
 ;;;###autoload
 (defun jest-ts-mode/run-tests (describe-only)
@@ -70,7 +70,7 @@
            (test-file-name (buffer-file-name)))
       (progn (setq *latest-test* (list test-file-name test-name default-directory))
              (compile (jest-ts-mode/test--command default-directory
-                                                  `(:file-name ,test-file-name :test-name ,test-name))
+                                                   `(:file-name ,test-file-name :test-name ,test-name))
                       'jest-ts-mode/compilation-mode))
     (error "No jest-config found. default directory: %s" default-directory)))
 
@@ -84,14 +84,21 @@
 
 (defun jest-ts-mode/test--command (jest-config-dir &optional test-file-name-and-pattern)
   "Create the command to run Jest tests.
-TEST-FILE-NAME-AND-PATTERN is a plist with optional `:file-name` and `:test-name`."
+TEST-FILE-NAME-AND-PATTERN is a plist with optional
+`:file-name` and `:test-name`."
   (let ((file-name (or (plist-get test-file-name-and-pattern :file-name) ""))
         (test-name (plist-get test-file-name-and-pattern :test-name)))
-    (s-trim-right (format jest-ts-mode/jest-command-pattern
-                          (bob/get-inspect-port)
-                          jest-config-dir
-                          file-name
-                          (if test-name (format "-t \"%s\"" test-name) "")))))
+    (->>
+     (format jest-ts-mode/jest-command-pattern
+             (bob/get-inspect-port)
+             jest-config-dir
+             file-name
+             (if test-name
+                 (format "-t \"%s\""
+                         test-name)
+               ""))
+     s-trim-right
+     (s-replace-regexp "\\[\\|\\]" "\\\\\\&"))))
 
 (defun jest-ts-mode/is--jest-test-call (node)
   "Check if the given NODE is a Jest test function (describe | it | test)."
