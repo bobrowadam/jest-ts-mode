@@ -36,43 +36,80 @@
 (defun jest-ts-mode/run-tests (describe-only)
   "Run a specific test from the current file."
   (interactive "P")
-  (if-let ((default-directory (locate-dominating-file "./" "jest.config.ts"))
-           (test-name (jest-ts-mode/choose--test-with-completion describe-only))
-           (test-file-name (buffer-file-name)))
-      (progn (setq *latest-test* (list test-file-name test-name default-directory))
-             (compile (jest-ts-mode/test--command
-                       default-directory
-                       `(:file-name ,test-file-name :test-name ,test-name))
-                      'jest-ts-mode/compilation-mode))
-    (error "No jest-config found. default directory: %s" default-directory)))
+  (let ((default-directory (jest-ts-mode/find--jest-config-parent-directory))
+        (test-name (jest-ts-mode/choose--test-with-completion describe-only))
+        (test-file-name (buffer-file-name)))
+    (progn (setq *latest-test* (list test-file-name test-name default-directory))
+           (compile (jest-ts-mode/test--command
+                     default-directory
+                     `(:file-name ,test-file-name :test-name ,test-name))
+                    'jest-ts-mode/compilation-mode))))
 
 ;;;###autoload
 (defun jest-ts-mode/rerun-latest-test ()
   "Run the latest test when it exists."
   (interactive)
   (if-let ((*latest-test*)
-           (default-directory (nth 2 *latest-test*))
+           (default-directory (nth 3 *latest-test*))
            (file-name (car *latest-test*))
            (test-name (nth 1 *latest-test*)))
       (compile (jest-ts-mode/test--command default-directory
-                                           `(:file-name ,file-name
-                                                        :test-name ,test-name))
+                                           (list :file-name
+                                                 file-name
+                                                 :test-name
+                                                 test-name))
                'jest-ts-mode/compilation-mode)
-    (error "No jest-config found. default directory: %s" default-directory)))
+    (error "Could not rerun latest test.
+ *latest-test*: %s
+ default directory: %s"
+           *latest-test*
+           default-directory)))
+
+(defun jest-ts-mode/jump-to-latest-test ()
+  "Jump to the latest test definition when it exists."
+  (interactive)
+  (if-let ((*latest-test*)
+           (default-directory (nth 3 *latest-test*))
+           (file-name (car *latest-test*))
+           (test-name (nth 1 *latest-test*))
+           (test-point (nth 2 *latest-test*)))
+      (progn (push-mark (point) t) 
+             (find-file file-name)
+             (goto-char test-point))
+    (error "Could not jump to latest test.
+ *latest-test*: %s
+ default directory: %s"
+           *latest-test*
+           default-directory)))
+
+(defun jest-ts-mode/find--jest-config-parent-directory ()
+    (or (locate-dominating-file "./" "jest.config.ts")
+        (error "No jest-config found. default directory: %s"
+               default-directory)))
 
 ;;;###autoload
-(defun jest-ts-mode/run-test-on-point ()
+(defun jest-ts-mode/run-test-at-point ()
   "Run the enclosing test around point."
   (interactive)
-  (if-let ((default-directory (or (locate-dominating-file "./" "jest.config.ts")
-                                  (error "No jest-config found. default directory: %s" default-directory)))
-           (test-name (jest-ts-mode/get--current-test-name))
+  (if-let ((default-directory (jest-ts-mode/find--jest-config-parent-directory))
+           (test-name-and-point (jest-ts-mode/get--current-test-name-and-point))
            (test-file-name (buffer-file-name)))
-      (progn (setq *latest-test* (list test-file-name test-name default-directory))
-             (compile (jest-ts-mode/test--command default-directory
-                                                   `(:file-name ,test-file-name :test-name ,test-name))
-                      'jest-ts-mode/compilation-mode))
-    (error "No jest-config found. default directory: %s" default-directory)))
+    (progn (setq *latest-test*
+                 (list test-file-name
+                       (car test-name-and-point)
+                       (cadr test-name-and-point)
+                       default-directory))
+           (compile (jest-ts-mode/test--command default-directory
+                                                (list :file-name
+                                                      test-file-name
+                                                      :test-name 
+                                                      (car test-name-and-point) 
+                                                      :test-point
+                                                      (cadr test-name-and-point) ))
+                    'jest-ts-mode/compilation-mode))
+    (error "Could not run test at point:
+test-name: %s
+test-file-name %s" test-name-and-point test-file-name)))
 
 (define-compilation-mode jest-ts-mode/compilation-mode "Jest Compilation"
   "Compilation mode for Jest output."
@@ -107,7 +144,7 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
               (function-name (treesit-node-text function-node t)))
          (member function-name '("describe" "it" "test")))))
 
-(defun jest-ts-mode/get--current-test-name ()
+(defun jest-ts-mode/get--current-test-name-and-point ()
   "Extract the current test name using Treesit."
   (if (region-active-p)
       (buffer-substring-no-properties (region-beginning) (region-end))
@@ -116,8 +153,10 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
                  (test-node (treesit-parent-until node #'jest-ts-mode/is--jest-test-call))
                  (test-name-node (treesit-node-child-by-field-name test-node "arguments"))
                  (first-arg-node (treesit-node-child test-name-node 1))
-                 (node-type (treesit-node-type first-arg-node)))
-          (string-node-string-fragment first-arg-node)))))
+                 (node-type (treesit-node-type first-arg-node))
+                 (node-start-point (treesit-node-start test-node)))
+          (list (string-node-string-fragment first-arg-node)
+                node-start-point)))))
 
 (defun string-node-string-fragment (node)
   (cond 
