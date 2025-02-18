@@ -27,6 +27,13 @@
 (require 'treesit)
 (require 'dash)
 
+(defun jest-ts/read--file (file-name)
+  "Return the contents of FILE-NAME as a lisp data type."
+  (when (file-exists-p file-name)
+   (with-temp-buffer
+     (insert-file-contents file-name)
+     (buffer-string))))
+
 (defvar *latest-test* nil)
 (defcustom jest-ts-mode/jest-command-pattern
   "IN_MEMORY_DB=true node --inspect=%s ~/source/grain/node_modules/.bin/jest --config %sjest.config.ts %s %s"
@@ -293,11 +300,11 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
 
 ;;; tests
 (defvar *jest-ts/test-file-ts-node*
-  (-some-> (read-file (expand-file-name "./jest-sb.test.ts"))
+  (-some-> (jest-ts/read--file (expand-file-name "./jest-sb.test.ts"))
     (treesit-parse-string 'typescript)))
 
 (defvar *jest-ts/test-file-ts-node-2*
-  (-some-> (read-file (expand-file-name "./jest-sb-2.test.ts"))
+  (-some-> (jest-ts/read--file (expand-file-name "./jest-sb-2.test.ts"))
     (treesit-parse-string 'typescript)))
 
 (ert-deftest jest-ts/create-tests-tree ()
