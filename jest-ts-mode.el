@@ -3,8 +3,8 @@
 ;; Author: Adam Bobrow
 ;; Maintainer: Adam Bobrow
 ;; Version: 0.0.1
-;; Package-Requires: (treesit dash)
-;; Homepage: homepage
+;; Package-Requires: ((emacs "29.1")
+;;                    (dash))
 ;; Keywords: jest,js,typescript,tree-sitter
 
 
@@ -24,8 +24,8 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
-(require 'treesit)
 (require 'dash)
+(require 'treesit)
 
 (defun jest-ts/read--file (file-name)
   "Return the contents of FILE-NAME as a lisp data type."
@@ -134,7 +134,7 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
         (test-name (plist-get test-file-name-and-pattern :test-name)))
     (->>
      (format jest-ts-mode/jest-command-pattern
-             (bob/get-inspect-port)
+             9229
              jest-config-dir
              file-name
              (if test-name
