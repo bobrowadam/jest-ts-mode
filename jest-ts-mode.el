@@ -27,6 +27,20 @@
 (require 'dash)
 (require 'treesit)
 
+(defgroup jest-ts nil
+  "Jest testing integration for TypeScript."
+  :group 'tools
+  :prefix "jest-ts-mode/")
+
+(defvar jest-ts-mode-map
+  (let ((map (make-sparse-keymap))) ;; Sparse keymaps only store explicitly defined bindings, saving memory
+    (define-key map (kbd "C-c C-t C-p") 'jest-ts-mode/run-test-at-point)
+    (define-key map (kbd "C-c C-t C-r") 'jest-ts-mode/rerun-latest-test)
+    (define-key map (kbd "C-c C-t C-n") 'jest-ts-mode/run-tests)
+    (define-key map (kbd "C-c C-t C-j") 'jest-ts-mode/jump-to-latest-test)
+    map)
+  "Keymap for jest-ts-mode.")
+
 (defun jest-ts-mode/test-colorize-compilation-buffer ()
   "Colorize the compilation buffer."
   (ansi-color-apply-on-region compilation-filter-start (point)))
@@ -45,7 +59,8 @@
 (defvar *latest-test* nil)
 (defcustom jest-ts-mode/jest-command-pattern
   "IN_MEMORY_DB=true node --inspect=%s ~/source/grain/node_modules/.bin/jest --config %sjest.config.ts %s %s"
-  "The command template to execute for running Jest with profiling")
+  "The command template to execute for running Jest with profiling"
+  :type 'string)
 
 ;;;###autoload
 (defun jest-ts-mode/run-tests (describe-only)
@@ -362,6 +377,26 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
                    ("  [✅] Describe 1 test 2" . "Describe 1 test 2")
                    ("[📘] Describe 2" . "Describe 2")))))
 
+;;;###autoload
+(define-minor-mode jest-ts-mode
+  "Minor mode for running Jest tests in TypeScript files.
+
+\\{jest-ts-mode-map}"
+  :init-value nil
+  :lighter " Jest"
+  :keymap jest-ts-mode-map
+  :group 'jest-ts
+  (if jest-ts-mode
+      (message "Jest-ts mode enabled")
+    (message "Jest-ts mode disabled")))
+
+;;;###autoload
+(defun jest-ts-mode-setup ()
+  "Setup jest-ts-mode for the current buffer."
+  (interactive)
+  (when (and buffer-file-name
+             (string-match-p "\\.tsx?\\(test\\|spec\\)\\." buffer-file-name))
+    (jest-ts-mode 1)))
 
 (provide 'jest-ts-mode)
 
