@@ -5,6 +5,7 @@
 ;; Version: 0.0.1
 ;; Package-Requires: ((emacs "29.1")
 ;;                    (dash))
+;;                    (s))
 ;; Keywords: jest,js,typescript,tree-sitter
 
 
@@ -26,6 +27,9 @@
 ;;; Code:
 (require 'dash)
 (require 'treesit)
+(require 'ert)
+(require 'ansi-color)
+(require 'compile)
 
 (defgroup jest-ts nil
   "Jest testing integration for TypeScript."
@@ -45,9 +49,10 @@
   "Colorize the compilation buffer."
   (ansi-color-apply-on-region compilation-filter-start (point)))
 
+;;;###autoload
 (define-compilation-mode jest-ts-mode/compilation-mode "Jest Compilation"
   "Compilation mode for Jest output."
-  (add-hook 'compilation-filter-hook 'jest-ts-mode/test-colorize-compilation-buffer nil t))
+  (add-hook 'compilation-filter-hook 'jest-ts-mode/test-colorize-compilation-buffer nil nil))
 
 (defun jest-ts/read--file (file-name)
   "Return the contents of FILE-NAME as a lisp data type."
