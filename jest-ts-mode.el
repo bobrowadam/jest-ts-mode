@@ -27,6 +27,14 @@
 (require 'dash)
 (require 'treesit)
 
+(defun jest-ts-mode/test-colorize-compilation-buffer ()
+  "Colorize the compilation buffer."
+  (ansi-color-apply-on-region compilation-filter-start (point)))
+
+(define-compilation-mode jest-ts-mode/compilation-mode "Jest Compilation"
+  "Compilation mode for Jest output."
+  (add-hook 'compilation-filter-hook 'jest-ts-mode/test-colorize-compilation-buffer nil t))
+
 (defun jest-ts/read--file (file-name)
   "Return the contents of FILE-NAME as a lisp data type."
   (when (file-exists-p file-name)
@@ -117,14 +125,6 @@
     (error "Could not run test at point:
 test-name: %s
 test-file-name %s" test-name-and-point test-file-name)))
-
-(define-compilation-mode jest-ts-mode/compilation-mode "Jest Compilation"
-  "Compilation mode for Jest output."
-  (add-hook 'compilation-filter-hook 'jest-ts-mode/test-colorize-compilation-buffer nil t))
-
-(defun jest-ts-mode/test-colorize-compilation-buffer ()
-  "Colorize the compilation buffer."
-  (ansi-color-apply-on-region compilation-filter-start (point)))
 
 (defun jest-ts-mode/test--command (jest-config-dir &optional test-file-name-and-pattern)
   "Create the command to run Jest tests.
@@ -301,10 +301,6 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
 ;;; tests
 (defvar *jest-ts/test-file-ts-node*
   (-some-> (jest-ts/read--file (expand-file-name "./jest-sb.test.ts"))
-    (treesit-parse-string 'typescript)))
-
-(defvar *jest-ts/test-file-ts-node-2*
-  (-some-> (jest-ts/read--file (expand-file-name "./jest-sb-2.test.ts"))
     (treesit-parse-string 'typescript)))
 
 (ert-deftest jest-ts/create-tests-tree ()
