@@ -1,0 +1,48 @@
+#+TITLE: Jest TypeScript Mode for Emacs
+
+* Jest TypeScript Mode
+
+An Emacs mode for running Jest tests in TypeScript projects.
+
+** Features
+
+- Run tests at point
+- Rerun latest test
+- Jump to latest test
+- Choose tests with completion
+- Support for describe-only mode
+
+** Installation
+
+*** Manual Installation
+
+Clone this repository:
+
+#+begin_src bash
+git clone https://github.com/bobrowadam/jest-ts-mode.git
+#+end_src
+
+Add to your Emacs configuration:
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/jest-ts-mode")
+(require 'jest-ts-mode)
+#+end_src
+
+*** With use-package
+
+#+begin_src elisp
+(use-package jest-ts-mode
+  :load-path "/path/to/jest-ts-mode")
+#+end_src
+
+** Usage
+
+| Command                              | Description                                |
+|--------------------------------------+--------------------------------------------|
+| ~jest-ts-mode/run-test-at-point~     | Run the test at the current cursor position |
+| ~jest-ts-mode/rerun-latest-test~     | Rerun the most recently executed test      |
+| ~jest-ts-mode/jump-to-latest-test~   | Jump to the most recently executed test    |
+| ~jest-ts-mode/choose--test-with-completion~ | Choose a test to run using completion |
+
+** Configuration
