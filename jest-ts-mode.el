@@ -48,9 +48,9 @@
 (defun jest-ts/read--file (file-name)
   "Return the contents of FILE-NAME as a lisp data type."
   (when (file-exists-p file-name)
-   (with-temp-buffer
-     (insert-file-contents file-name)
-     (buffer-string))))
+    (with-temp-buffer
+      (insert-file-contents file-name)
+      (buffer-string))))
 
 (defvar *latest-test* nil)
 (defcustom jest-ts-mode/jest-command-pattern
@@ -97,7 +97,7 @@
            (file-name (car *latest-test*))
            (test-name (nth 1 *latest-test*))
            (test-point (nth 2 *latest-test*)))
-      (progn (push-mark (point) t) 
+      (progn (push-mark (point) t)
              (find-file file-name)
              (goto-char test-point))
     (error "Could not jump to latest test.
@@ -107,9 +107,9 @@
            default-directory)))
 
 (defun jest-ts-mode/find--jest-config-parent-directory ()
-    (or (locate-dominating-file "./" "jest.config.ts")
-        (error "No jest-config found. default directory: %s"
-               default-directory)))
+  (or (locate-dominating-file "./" "jest.config.ts")
+      (error "No jest-config found. default directory: %s"
+             default-directory)))
 
 (defun jest-ts-mode/run-test-at-point ()
   "Run the enclosing test around point."
@@ -117,19 +117,19 @@
   (if-let ((default-directory (jest-ts-mode/find--jest-config-parent-directory))
            (test-name-and-point (jest-ts-mode/get--current-test-name-and-point))
            (test-file-name (buffer-file-name)))
-    (progn (setq *latest-test*
-                 (list test-file-name
-                       (car test-name-and-point)
-                       (cadr test-name-and-point)
-                       default-directory))
-           (compile (jest-ts-mode/test--command default-directory
-                                                (list :file-name
-                                                      test-file-name
-                                                      :test-name 
-                                                      (car test-name-and-point) 
-                                                      :test-point
-                                                      (cadr test-name-and-point) ))
-                    'jest-ts-mode/compilation-mode))
+      (progn (setq *latest-test*
+                   (list test-file-name
+                         (car test-name-and-point)
+                         (cadr test-name-and-point)
+                         default-directory))
+             (compile (jest-ts-mode/test--command default-directory
+                                                  (list :file-name
+                                                        test-file-name
+                                                        :test-name
+                                                        (car test-name-and-point)
+                                                        :test-point
+                                                        (cadr test-name-and-point) ))
+                      'jest-ts-mode/compilation-mode))
     (error "Could not run test at point:
 test-name: %s
 test-file-name %s" test-name-and-point test-file-name)))
@@ -174,7 +174,7 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
                 node-start-point)))))
 
 (defun string-node-string-fragment (node)
-  (cond 
+  (cond
    ((string= (treesit-node-type node) "string")
     (treesit-node-text (nth 1 (treesit-node-children node)) t))
    ((string= (treesit-node-type node) "binary_expression") (binary--exp-to-string node))
