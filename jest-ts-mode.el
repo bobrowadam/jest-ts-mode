@@ -53,12 +53,22 @@
       (buffer-string))))
 
 (defvar *latest-test* nil)
-(defcustom jest-command-pattern
+(defcustom jest-ts/jest-command-fn
   (lambda ()
-    (format ""))
-  "The command template to execute for running Jest with profiling"
-  :type '(choice (string :tag "String value")
-                 (function :tag "Function"))
+    (format "%snode_modules/.bin/jest" (locate-dominating-file "" "node_modules")))
+  "A function that return the path to the jest executable"
+  :type '(function :tag "Function")
+  :group 'jest-ts)
+
+(defcustom jest-ts/environment-variables nil
+  "Custom environment variables for running the jest process.
+Should be an alist of (VARIABLE . VALUE) pairs."
+  :type '(alist :key-type string :value-type string)
+  :group 'jest-ts)
+
+(defcustom jest-ts/inspect-port 9229
+  "The port for the node js inspector."
+  :type '(number :tag "Port number")
   :group 'jest-ts)
 
 (defun jest-ts/run-tests (describe-only)
@@ -66,7 +76,11 @@
   (interactive "P")
   (let ((default-directory (jest-ts/find--jest-config-parent-directory))
         (test-name (jest-ts/choose--test-with-completion describe-only))
-        (test-file-name (buffer-file-name)))
+        (test-file-name (buffer-file-name))
+        (process-environment (copy-sequence process-environment)))
+    ;; Add environment variables to process-environment
+    (dolist (env-var jest-ts/environment-variables)
+      (push (format "%s=%s" (car env-var) (cdr env-var)) process-environment))
     (progn (setq *latest-test* (list test-file-name test-name default-directory))
            (compile (jest-ts/test--command
                      default-directory
@@ -77,15 +91,20 @@
   "Run the latest test when it exists."
   (interactive)
   (if-let ((*latest-test*)
-           (default-directory (nth 3 *latest-test*))
+           (default-directory (nth 2 *latest-test*))
            (file-name (car *latest-test*))
-           (test-name (nth 1 *latest-test*)))
-      (compile (jest-ts/test--command default-directory
-                                           (list :file-name
-                                                 file-name
-                                                 :test-name
-                                                 test-name))
-               'jest-ts/compilation-mode)
+           (test-name (nth 1 *latest-test*))
+           (process-environment (copy-sequence process-environment)))
+      (progn
+        ;; Add environment variables to process-environment
+        (dolist (env-var jest-ts/environment-variables)
+          (push (format "%s=%s" (car env-var) (cdr env-var)) process-environment))
+        (compile (jest-ts/test--command default-directory
+                                       (list :file-name
+                                             file-name
+                                             :test-name
+                                             test-name))
+                 'jest-ts/compilation-mode))
     (error "Could not rerun latest test.
  *latest-test*: %s
  default directory: %s"
@@ -119,20 +138,25 @@
   (interactive)
   (if-let ((default-directory (jest-ts/find--jest-config-parent-directory))
            (test-name-and-point (jest-ts/get--current-test-name-and-point))
-           (test-file-name (buffer-file-name)))
-      (progn (setq *latest-test*
-                   (list test-file-name
-                         (car test-name-and-point)
-                         (cadr test-name-and-point)
-                         default-directory))
-             (compile (jest-ts/test--command default-directory
-                                                  (list :file-name
-                                                        test-file-name
-                                                        :test-name
-                                                        (car test-name-and-point)
-                                                        :test-point
-                                                        (cadr test-name-and-point) ))
-                      'jest-ts/compilation-mode))
+           (test-file-name (buffer-file-name))
+           (process-environment (copy-sequence process-environment)))
+      (progn
+        ;; Add environment variables to process-environment
+        (dolist (env-var jest-ts/environment-variables)
+          (push (format "%s=%s" (car env-var) (cdr env-var)) process-environment))
+        (setq *latest-test*
+              (list test-file-name
+                    (car test-name-and-point)
+                    (cadr test-name-and-point)
+                    default-directory))
+        (compile (jest-ts/test--command default-directory
+                                       (list :file-name
+                                             test-file-name
+                                             :test-name
+                                             (car test-name-and-point)
+                                             :test-point
+                                             (cadr test-name-and-point) ))
+                 'jest-ts/compilation-mode))
     (error "Could not run test at point:
 test-name: %s
 test-file-name %s" test-name-and-point test-file-name)))
@@ -141,11 +165,12 @@ test-file-name %s" test-name-and-point test-file-name)))
   "Create the command to run Jest tests.
 TEST-FILE-NAME-AND-PATTERN is a plist with optional
 `:file-name` and `:test-name`."
-  (let ((file-name (or (plist-get test-file-name-and-pattern :file-name) ""))
-        (test-name (plist-get test-file-name-and-pattern :test-name)))
+  (let* ((file-name (or (plist-get test-file-name-and-pattern :file-name) ""))
+         (test-name (plist-get test-file-name-and-pattern :test-name)))
     (->>
-     (format jest-ts/jest-command-pattern
-             9229
+     (format "node --inspect=%s %s --config %sjest.config.ts %s %s"
+             jest-ts/inspect-port
+             (funcall jest-ts/jest-command-fn)
              jest-config-dir
              file-name
              (if test-name
