@@ -35,15 +35,15 @@
 (defgroup jest-ts nil
   "Jest testing integration for TypeScript."
   :group 'tools
-  :prefix "jest-ts-mode/")
+  :prefix "jest-ts/")
 
-(defun jest-ts-mode/test-colorize-compilation-buffer ()
+(defun jest-ts/test-colorize-compilation-buffer ()
   "Colorize the compilation buffer."
   (ansi-color-apply-on-region compilation-filter-start (point)))
 
-(define-compilation-mode jest-ts-mode/compilation-mode "Jest Compilation"
+(define-compilation-mode jest-ts/compilation-mode "Jest Compilation"
   "Compilation mode for Jest output."
-  (add-hook 'compilation-filter-hook 'jest-ts-mode/test-colorize-compilation-buffer nil nil))
+  (add-hook 'compilation-filter-hook 'jest-ts/test-colorize-compilation-buffer nil nil))
 
 (defun jest-ts/read--file (file-name)
   "Return the contents of FILE-NAME as a lisp data type."
@@ -53,43 +53,46 @@
       (buffer-string))))
 
 (defvar *latest-test* nil)
-(defcustom jest-ts-mode/jest-command-pattern
-  "IN_MEMORY_DB=true node --inspect=%s ~/source/grain/node_modules/.bin/jest --config %sjest.config.ts %s %s"
+(defcustom jest-command-pattern
+  (lambda ()
+    (format ""))
   "The command template to execute for running Jest with profiling"
-  :type 'string)
+  :type '(choice (string :tag "String value")
+                 (function :tag "Function"))
+  :group 'jest-ts)
 
-(defun jest-ts-mode/run-tests (describe-only)
+(defun jest-ts/run-tests (describe-only)
   "Run a specific test from the current file."
   (interactive "P")
-  (let ((default-directory (jest-ts-mode/find--jest-config-parent-directory))
-        (test-name (jest-ts-mode/choose--test-with-completion describe-only))
+  (let ((default-directory (jest-ts/find--jest-config-parent-directory))
+        (test-name (jest-ts/choose--test-with-completion describe-only))
         (test-file-name (buffer-file-name)))
     (progn (setq *latest-test* (list test-file-name test-name default-directory))
-           (compile (jest-ts-mode/test--command
+           (compile (jest-ts/test--command
                      default-directory
                      `(:file-name ,test-file-name :test-name ,test-name))
-                    'jest-ts-mode/compilation-mode))))
+                    'jest-ts/compilation-mode))))
 
-(defun jest-ts-mode/rerun-latest-test ()
+(defun jest-ts/rerun-latest-test ()
   "Run the latest test when it exists."
   (interactive)
   (if-let ((*latest-test*)
            (default-directory (nth 3 *latest-test*))
            (file-name (car *latest-test*))
            (test-name (nth 1 *latest-test*)))
-      (compile (jest-ts-mode/test--command default-directory
+      (compile (jest-ts/test--command default-directory
                                            (list :file-name
                                                  file-name
                                                  :test-name
                                                  test-name))
-               'jest-ts-mode/compilation-mode)
+               'jest-ts/compilation-mode)
     (error "Could not rerun latest test.
  *latest-test*: %s
  default directory: %s"
            *latest-test*
            default-directory)))
 
-(defun jest-ts-mode/jump-to-latest-test ()
+(defun jest-ts/jump-to-latest-test ()
   "Jump to the latest test definition when it exists."
   (interactive)
   (if-let ((*latest-test*)
@@ -106,42 +109,42 @@
            *latest-test*
            default-directory)))
 
-(defun jest-ts-mode/find--jest-config-parent-directory ()
+(defun jest-ts/find--jest-config-parent-directory ()
   (or (locate-dominating-file "./" "jest.config.ts")
       (error "No jest-config found. default directory: %s"
              default-directory)))
 
-(defun jest-ts-mode/run-test-at-point ()
+(defun jest-ts/run-test-at-point ()
   "Run the enclosing test around point."
   (interactive)
-  (if-let ((default-directory (jest-ts-mode/find--jest-config-parent-directory))
-           (test-name-and-point (jest-ts-mode/get--current-test-name-and-point))
+  (if-let ((default-directory (jest-ts/find--jest-config-parent-directory))
+           (test-name-and-point (jest-ts/get--current-test-name-and-point))
            (test-file-name (buffer-file-name)))
       (progn (setq *latest-test*
                    (list test-file-name
                          (car test-name-and-point)
                          (cadr test-name-and-point)
                          default-directory))
-             (compile (jest-ts-mode/test--command default-directory
+             (compile (jest-ts/test--command default-directory
                                                   (list :file-name
                                                         test-file-name
                                                         :test-name
                                                         (car test-name-and-point)
                                                         :test-point
                                                         (cadr test-name-and-point) ))
-                      'jest-ts-mode/compilation-mode))
+                      'jest-ts/compilation-mode))
     (error "Could not run test at point:
 test-name: %s
 test-file-name %s" test-name-and-point test-file-name)))
 
-(defun jest-ts-mode/test--command (jest-config-dir &optional test-file-name-and-pattern)
+(defun jest-ts/test--command (jest-config-dir &optional test-file-name-and-pattern)
   "Create the command to run Jest tests.
 TEST-FILE-NAME-AND-PATTERN is a plist with optional
 `:file-name` and `:test-name`."
   (let ((file-name (or (plist-get test-file-name-and-pattern :file-name) ""))
         (test-name (plist-get test-file-name-and-pattern :test-name)))
     (->>
-     (format jest-ts-mode/jest-command-pattern
+     (format jest-ts/jest-command-pattern
              9229
              jest-config-dir
              file-name
@@ -152,20 +155,20 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
      s-trim-right
      (s-replace-regexp "\\[\\|\\]" "\\\\\\&"))))
 
-(defun jest-ts-mode/is--jest-test-call (node)
+(defun jest-ts/is--jest-test-call (node)
   "Check if the given NODE is a Jest test function (describe | it | test)."
   (and (string= (treesit-node-type node) "call_expression")
        (let* ((function-node (treesit-node-child-by-field-name node "function"))
               (function-name (treesit-node-text function-node t)))
          (member function-name '("describe" "it" "test")))))
 
-(defun jest-ts-mode/get--current-test-name-and-point ()
+(defun jest-ts/get--current-test-name-and-point ()
   "Extract the current test name using Treesit."
   (if (region-active-p)
       (buffer-substring-no-properties (region-beginning) (region-end))
     (when (treesit-ready-p 'typescript)
       (-if-let* ((node (treesit-node-at (point)))
-                 (test-node (treesit-parent-until node #'jest-ts-mode/is--jest-test-call))
+                 (test-node (treesit-parent-until node #'jest-ts/is--jest-test-call))
                  (test-name-node (treesit-node-child-by-field-name test-node "arguments"))
                  (first-arg-node (treesit-node-child test-name-node 1))
                  (node-type (treesit-node-type first-arg-node))
@@ -191,7 +194,7 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
   (mapconcat #'treesit-node-text
              (treesit-node-children node "arguments")))
 
-(defun jest-ts-mode/choose--test-with-completion (&optional describe-only)
+(defun jest-ts/choose--test-with-completion (&optional describe-only)
   "Choose a test using completion.
 If DESCRIBE-ONLY is non-nil, show only describe blocks."
   (if-let* ((root-node (treesit-buffer-root-node 'typescript))
@@ -375,10 +378,10 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
   "Minor mode for running Jest tests in TypeScript files."
   :init-value nil
   :lighter " Jest"
-  :keymap `((,(kbd "C-c C-t C-p") . jest-ts-mode/run-test-at-point)
-            (,(kbd "C-c C-t C-r") . jest-ts-mode/rerun-latest-test)
-            (,(kbd "C-c C-t C-n") . jest-ts-mode/run-tests)
-            (,(kbd "C-c C-t C-j") . jest-ts-mode/jump-to-latest-test))
+  :keymap `((,(kbd "C-c C-t C-p") . jest-ts/run-test-at-point)
+            (,(kbd "C-c C-t C-r") . jest-ts/rerun-latest-test)
+            (,(kbd "C-c C-t C-n") . jest-ts/run-tests)
+            (,(kbd "C-c C-t C-j") . jest-ts/jump-to-latest-test))
   :group 'jest-ts)
 
 (provide 'jest-ts-mode)
