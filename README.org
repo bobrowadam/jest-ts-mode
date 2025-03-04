@@ -46,3 +46,26 @@ Add to your Emacs configuration:
 | ~jest-ts-mode/choose--test-with-completion~ | Choose a test to run using completion |
 
 ** Configuration
+
+You can customize the mode by setting these variables:
+
+#+begin_src elisp
+;; Path to the Jest executable - can be a function that returns the path
+(setq jest-ts/jest-command-fn
+      (lambda ()
+        (concat (locate-dominating-file "" "node_modules") "node_modules/.bin/jest")))
+
+;; Environment variables for Jest tests
+;; These will be set in the compilation process environment
+(setq jest-ts/environment-variables '(("NODE_ENV" . "test")
+                                      ("IN_MEMORY_DB" . "true")))
+
+;; Port for Node.js inspector
+(setq jest-ts/inspect-port 9229)
+#+end_src
+
+All of these variables can also be customized using Emacs' customize interface:
+
+#+begin_src elisp
+M-x customize-group RET jest-ts RET
+#+end_src
