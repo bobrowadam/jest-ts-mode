@@ -4,8 +4,8 @@
 ;; Maintainer: Adam Bobrow
 ;; Version: 0.0.1
 ;; Package-Requires: ((emacs "29.1")
+;;                    (s)
 ;;                    (dash))
-;;                    (s))
 ;; Keywords: jest,js,typescript,tree-sitter
 
 
@@ -30,26 +30,17 @@
 (require 'ert)
 (require 'ansi-color)
 (require 'compile)
+(require 's)
 
 (defgroup jest-ts nil
   "Jest testing integration for TypeScript."
   :group 'tools
   :prefix "jest-ts-mode/")
 
-(defvar jest-ts-mode-map
-  (let ((map (make-sparse-keymap))) ;; Sparse keymaps only store explicitly defined bindings, saving memory
-    (define-key map (kbd "C-c C-t C-p") 'jest-ts-mode/run-test-at-point)
-    (define-key map (kbd "C-c C-t C-r") 'jest-ts-mode/rerun-latest-test)
-    (define-key map (kbd "C-c C-t C-n") 'jest-ts-mode/run-tests)
-    (define-key map (kbd "C-c C-t C-j") 'jest-ts-mode/jump-to-latest-test)
-    map)
-  "Keymap for jest-ts-mode.")
-
 (defun jest-ts-mode/test-colorize-compilation-buffer ()
   "Colorize the compilation buffer."
   (ansi-color-apply-on-region compilation-filter-start (point)))
 
-;;;###autoload
 (define-compilation-mode jest-ts-mode/compilation-mode "Jest Compilation"
   "Compilation mode for Jest output."
   (add-hook 'compilation-filter-hook 'jest-ts-mode/test-colorize-compilation-buffer nil nil))
@@ -67,7 +58,6 @@
   "The command template to execute for running Jest with profiling"
   :type 'string)
 
-;;;###autoload
 (defun jest-ts-mode/run-tests (describe-only)
   "Run a specific test from the current file."
   (interactive "P")
@@ -80,7 +70,6 @@
                      `(:file-name ,test-file-name :test-name ,test-name))
                     'jest-ts-mode/compilation-mode))))
 
-;;;###autoload
 (defun jest-ts-mode/rerun-latest-test ()
   "Run the latest test when it exists."
   (interactive)
@@ -122,7 +111,6 @@
         (error "No jest-config found. default directory: %s"
                default-directory)))
 
-;;;###autoload
 (defun jest-ts-mode/run-test-at-point ()
   "Run the enclosing test around point."
   (interactive)
@@ -384,24 +372,14 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
 
 ;;;###autoload
 (define-minor-mode jest-ts-mode
-  "Minor mode for running Jest tests in TypeScript files.
-
-\\{jest-ts-mode-map}"
+  "Minor mode for running Jest tests in TypeScript files."
   :init-value nil
   :lighter " Jest"
-  :keymap jest-ts-mode-map
-  :group 'jest-ts
-  (if jest-ts-mode
-      (message "Jest-ts mode enabled")
-    (message "Jest-ts mode disabled")))
-
-;;;###autoload
-(defun jest-ts-mode-setup ()
-  "Setup jest-ts-mode for the current buffer."
-  (interactive)
-  (when (and buffer-file-name
-             (string-match-p "\\.tsx?\\(test\\|spec\\)\\." buffer-file-name))
-    (jest-ts-mode 1)))
+  :keymap `((,(kbd "C-c C-t C-p") . jest-ts-mode/run-test-at-point)
+            (,(kbd "C-c C-t C-r") . jest-ts-mode/rerun-latest-test)
+            (,(kbd "C-c C-t C-n") . jest-ts-mode/run-tests)
+            (,(kbd "C-c C-t C-j") . jest-ts-mode/jump-to-latest-test))
+  :group 'jest-ts)
 
 (provide 'jest-ts-mode)
 
