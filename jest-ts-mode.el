@@ -52,7 +52,20 @@
       (insert-file-contents file-name)
       (buffer-string))))
 
-(defvar *latest-test* nil)
+(defvar *latest-test* nil
+  "Stores the latest test that was run.
+Format is (test-file-name test-name test-point default-directory).")
+
+(defun jest-ts/persist-latest-test (test-file-name test-name-and-point)
+  "Store the latest test information for rerunning later.
+TEST-FILE-NAME is the path to the test file.
+TEST-NAME-AND-POINT is a list containing the test name and point."
+  (setq *latest-test*
+        (list test-file-name
+              (car test-name-and-point)
+              (cadr test-name-and-point)
+              default-directory)))
+
 (defcustom jest-ts/jest-command-fn
   (lambda ()
     (format "%snode_modules/.bin/jest" (locate-dominating-file "" "node_modules")))
@@ -72,20 +85,26 @@ Should be an alist of (VARIABLE . VALUE) pairs."
   :group 'jest-ts)
 
 (defun jest-ts/run-tests (describe-only)
-  "Run a specific test from the current file."
+  "Run a specific test from the current file.
+With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
   (interactive "P")
-  (let ((default-directory (jest-ts/find--jest-config-parent-directory))
-        (test-name (jest-ts/choose--test-with-completion describe-only))
-        (test-file-name (buffer-file-name))
-        (process-environment (copy-sequence process-environment)))
+  (let* ((default-directory (jest-ts/find--jest-config-parent-directory))
+         (test-info (jest-ts/choose--test-with-completion describe-only))
+         (test-name (car test-info))
+         (test-point (cdr test-info))
+         (test-file-name (buffer-file-name))
+         (process-environment (copy-sequence process-environment)))
     ;; Add environment variables to process-environment
     (dolist (env-var jest-ts/environment-variables)
-      (push (format "%s=%s" (car env-var) (cdr env-var)) process-environment))
-    (progn (setq *latest-test* (list test-file-name test-name default-directory))
-           (compile (jest-ts/test--command
-                     default-directory
-                     `(:file-name ,test-file-name :test-name ,test-name))
-                    'jest-ts/compilation-mode))))
+      (push (format "%s=%s"
+                    (car env-var)
+                    (cdr env-var))
+            process-environment))
+    (jest-ts/persist-latest-test test-file-name (list test-name test-point))
+    (compile (jest-ts/test--command
+              default-directory
+              `(:file-name ,test-file-name :test-name ,test-name))
+             'jest-ts/compilation-mode)))
 
 (defun jest-ts/rerun-latest-test ()
   "Run the latest test when it exists."
@@ -144,11 +163,7 @@ Should be an alist of (VARIABLE . VALUE) pairs."
         ;; Add environment variables to process-environment
         (dolist (env-var jest-ts/environment-variables)
           (push (format "%s=%s" (car env-var) (cdr env-var)) process-environment))
-        (setq *latest-test*
-              (list test-file-name
-                    (car test-name-and-point)
-                    (cadr test-name-and-point)
-                    default-directory))
+        (jest-ts/persist-latest-test test-file-name test-name-and-point)
         (compile (jest-ts/test--command default-directory
                                        (list :file-name
                                              test-file-name
@@ -221,18 +236,20 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
 
 (defun jest-ts/choose--test-with-completion (&optional describe-only)
   "Choose a test using completion.
-If DESCRIBE-ONLY is non-nil, show only describe blocks."
+If DESCRIBE-ONLY is non-nil, show only describe blocks.
+Returns a cons cell (test-name . test-point)."
   (if-let* ((root-node (treesit-buffer-root-node 'typescript))
             (test-tree (jest-ts/map--describe-nodes root-node 0))
             (candidates (jest-ts/flatten--test-tree test-tree))
             (filtered-candidates (if describe-only
-                                     (-filter (lambda (c) (s-contains? "[📘]" (car c)))
+                                     (-filter (lambda (c) (s-contains? "[📘]" (nth 0 c)))
                                               candidates)
                                    candidates))
             (chosen (completing-read "Choose test: "
-                                     (mapcar #'car filtered-candidates)
-                                     nil t)))
-      (cdr (assoc chosen filtered-candidates))
+                                     (mapcar (lambda (c) (nth 0 c)) filtered-candidates)
+                                     nil t))
+            (selected (-find (lambda (c) (string= (nth 0 c) chosen)) filtered-candidates)))
+      (cons (nth 1 selected) (nth 2 selected))
     (error "No tests definition found in file")))
 
 (defun get-nodes-by-type (node type)
@@ -293,46 +310,53 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
      (cons 'level level)
      (cons 'nodes
            (mapcar (lambda (node)
-                     (let ((node-type (treesit-node-text (car (treesit-node-children node)))))
+                     (let ((node-type (treesit-node-text (car (treesit-node-children node))))
+                           (node-start (treesit-node-start node)))
                        (if (string= node-type "describe")
                            (list (cons 'type 'describe)
                                  (cons 'name (get-node-text node))
+                                 (cons 'position node-start)
                                  (cons 'body
                                        (jest-ts/map--describe-nodes (get-body-node node)
                                                                     (1+ level))))
                          (list (cons 'type 'test)
-                               (cons 'name (get-node-text node))))))
+                               (cons 'name (get-node-text node))
+                               (cons 'position node-start)))))
                    all-expressions)))))
 
 (defun jest-ts/flatten--test-tree (tree &optional prefix)
-  "Convert TEST-TREE into a flat list of (display . name) cons cells."
+  "Convert test TREE into a flat list of (display name position) lists."
   (let* ((level (alist-get 'level tree))
          (indent (make-string (* level 2) ?\s))
          (prefix (or prefix ""))
-         (nodes (alist-get 'nodes tree)))
-    (-flatten (mapcar (lambda (node)
-                        (pcase (alist-get 'type node)
-                          ('describe (if-let ((body (alist-get 'body node)))
-                                         (list (cons (format "%s%s[%s] %s"
-                                                             prefix
-                                                             indent
-                                                             "📘"
-                                                             (alist-get 'name node))
-                                                     (alist-get 'name node))
-                                               (jest-ts/flatten--test-tree body prefix))
-                                       (cons (format "%s%s[%s] %s"
-                                                     prefix
-                                                     indent
-                                                     "📘"
-                                                     (alist-get 'name node))
-                                             (alist-get 'name node))))
-                          ('test (cons (format "%s%s[%s] %s"
-                                               prefix
-                                               indent
-                                               "✅"
-                                               (alist-get 'name node))
-                                       (alist-get 'name node)))))
-                      nodes))))
+         (nodes (alist-get 'nodes tree))
+         (result '()))
+    ;; Process each node and collect results in a proper list
+    (dolist (node nodes)
+      (pcase (alist-get 'type node)
+        ('describe 
+         (push (list (format "%s%s[%s] %s"
+                             prefix
+                             indent
+                             "📘"
+                             (alist-get 'name node))
+                     (alist-get 'name node)
+                     (alist-get 'position node))
+               result)
+         ;; Process child nodes if they exist
+         (when-let ((body (alist-get 'body node)))
+           (setq result (append (jest-ts/flatten--test-tree body prefix) result))))
+        ('test
+         (push (list (format "%s%s[%s] %s"
+                             prefix
+                             indent
+                             "✅"
+                             (alist-get 'name node))
+                     (alist-get 'name node)
+                     (alist-get 'position node))
+               result))))
+    ;; Return the result in the correct order
+    (nreverse result)))
 
 ;;; tests
 (defvar *jest-ts/test-file-ts-node*
@@ -364,39 +388,49 @@ If DESCRIBE-ONLY is non-nil, show only describe blocks."
   (should (equal (jest-ts/flatten--test-tree '((level . 0)
                                                (nodes . (((type . describe)
                                                           (name . "Describe 1")
+                                                          (position . 100)
                                                           (body . nil))
                                                          ((type . describe)
                                                           (name . "Describe 2")
+                                                          (position . 200)
                                                           (body . nil))))))
-                 '(("[📘] Describe 1" . "Describe 1")
-                   ("[📘] Describe 2" . "Describe 2"))))
+                 '(("[📘] Describe 1" "Describe 1" 100)
+                   ("[📘] Describe 2" "Describe 2" 200))))
 
   (should (equal (jest-ts/flatten--test-tree '((level . 0)
                                                (nodes . (((type . describe)
                                                           (name . "Describe 1")
+                                                          (position . 100)
                                                           (body . ((level . 1)
                                                                    (nodes . (((type . test)
                                                                               (name . "test 1")
+                                                                              (position . 150)
                                                                               (body . nil))
                                                                              ((type . test)
                                                                               (name . "test 2")
+                                                                              (position . 180)
                                                                               (body . nil)))))))
                                                          ((type . describe)
                                                           (name . "Describe 2")
+                                                          (position . 200)
                                                           (body . nil))))))
-                 '(("[📘] Describe 1" . "Describe 1")
-                   ("  [✅] test 1" . "test 1")
-                   ("  [✅] test 2" . "test 2")
-                   ("[📘] Describe 2" . "Describe 2")))))
+                 '(("[📘] Describe 1" "Describe 1" 100)
+                   ("  [✅] test 1" "test 1" 150)
+                   ("  [✅] test 2" "test 2" 180)
+                   ("[📘] Describe 2" "Describe 2" 200)))))
 
 (ert-deftest jest-ts/map-describe-and-flatten-tree ()
   "Return a flat list of candidates that represents the test suite hierarchy using indentation and prefixes for test|describe headings"
-  (should (equal (jest-ts/flatten--test-tree (jest-ts/map--describe-nodes *jest-ts/test-file-ts-node* 0))
-                 '(("[📘] Describe 1" . "Describe 1")
-                   ("  [📘] Describe 1.1" . "Describe 1.1")
-                   ("  [✅] Describe 1 test 1" . "Describe 1 test 1")
-                   ("  [✅] Describe 1 test 2" . "Describe 1 test 2")
-                   ("[📘] Describe 2" . "Describe 2")))))
+  (let* ((tree (jest-ts/map--describe-nodes *jest-ts/test-file-ts-node* 0))
+         (flattened (jest-ts/flatten--test-tree tree))
+         ;; Extract just the first two elements for comparison, ignoring positions
+         (simplified (mapcar (lambda (item) (list (nth 0 item) (nth 1 item))) flattened)))
+    (should (equal simplified
+                   '(("[📘] Describe 1" "Describe 1")
+                     ("  [📘] Describe 1.1" "Describe 1.1")
+                     ("  [✅] Describe 1 test 1" "Describe 1 test 1")
+                     ("  [✅] Describe 1 test 2" "Describe 1 test 2")
+                     ("[📘] Describe 2" "Describe 2"))))))
 
 ;;;###autoload
 (define-minor-mode jest-ts-mode
