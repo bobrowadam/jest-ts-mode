@@ -23,7 +23,9 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
+;;
+;;; Commentary:
+;;
 ;;; Code:
 (require 'dash)
 (require 'treesit)
@@ -33,12 +35,14 @@
 (require 's)
 
 (defgroup jest-ts nil
-  "Jest testing integration for TypeScript."
+  "Jest testing integration for Typescript."
   :group 'tools
   :prefix "jest-ts/")
 
 (defun jest-ts/test-colorize-compilation-buffer ()
-  "Colorize the compilation buffer."
+  "Colorize the compilation buffer.
+Applies ANSI color codes to the compilation output.
+Added as a hook to `compilation-filter-hook'."
   (ansi-color-apply-on-region compilation-filter-start (point)))
 
 (define-compilation-mode jest-ts/compilation-mode "Jest Compilation"
@@ -46,7 +50,9 @@
   (add-hook 'compilation-filter-hook 'jest-ts/test-colorize-compilation-buffer nil nil))
 
 (defun jest-ts/read--file (file-name)
-  "Return the contents of FILE-NAME as a lisp data type."
+  "Return the contents of FILE-NAME as a string.
+FILE-NAME is the path to the file to read.
+Returns the file contents or nil if the file doesn't exist."
   (when (file-exists-p file-name)
     (with-temp-buffer
       (insert-file-contents file-name)
@@ -54,12 +60,13 @@
 
 (defvar *latest-test* nil
   "Stores the latest test that was run.
-Format is (test-file-name test-name test-point default-directory).")
+Format is (test-file-name test-name test-point DEFAULT-DIRECTORY).")
 
 (defun jest-ts/persist-latest-test (test-file-name test-name-and-point)
   "Store the latest test information for rerunning later.
 TEST-FILE-NAME is the path to the test file.
-TEST-NAME-AND-POINT is a list containing the test name and point."
+TEST-NAME-AND-POINT is a list containing the test name and point.
+Stores the information in the `*latest-test*' variable for later use."
   (setq *latest-test*
         (list test-file-name
               (car test-name-and-point)
@@ -69,7 +76,7 @@ TEST-NAME-AND-POINT is a list containing the test name and point."
 (defcustom jest-ts/jest-command-fn
   (lambda ()
     (format "%snode_modules/.bin/jest" (locate-dominating-file "" "node_modules")))
-  "A function that return the path to the jest executable"
+  "A function that return the path to the jest executable."
   :type '(function :tag "Function")
   :group 'jest-ts)
 
@@ -148,8 +155,11 @@ With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
            default-directory)))
 
 (defun jest-ts/find--jest-config-parent-directory ()
+  "Find the parent directory containing jest.config.ts.
+Searches upward from the current directory.
+Returns the directory path or signals an error if not found."
   (or (locate-dominating-file "./" "jest.config.ts")
-      (error "No jest-config found. default directory: %s"
+      (error "No jest-config found.  default directory: %s"
              default-directory)))
 
 (defun jest-ts/run-test-at-point ()
@@ -177,9 +187,11 @@ test-name: %s
 test-file-name %s" test-name-and-point test-file-name)))
 
 (defun jest-ts/test--command (jest-config-dir &optional test-file-name-and-pattern)
-  "Create the command to run Jest tests.
+  "Create the command to run Jest test.
+JEST-CONFIG-DIR is the directory containing jest.config.ts.
 TEST-FILE-NAME-AND-PATTERN is a plist with optional
-`:file-name` and `:test-name`."
+`:file-name' and `:test-name'.
+Returns a shell command string that can be passed to `compile'."
   (let* ((file-name (or (plist-get test-file-name-and-pattern :file-name) ""))
          (test-name (plist-get test-file-name-and-pattern :test-name)))
     (->>
@@ -196,14 +208,17 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
      (s-replace-regexp "\\[\\|\\]" "\\\\\\&"))))
 
 (defun jest-ts/is--jest-test-call (node)
-  "Check if the given NODE is a Jest test function (describe | it | test)."
+  "Check if the given NODE is a Jest test function (describe | it | test).
+Returns non-nil if NODE is a call to describe, it, or test function."
   (and (string= (treesit-node-type node) "call_expression")
        (let* ((function-node (treesit-node-child-by-field-name node "function"))
               (function-name (treesit-node-text function-node t)))
          (member function-name '("describe" "it" "test")))))
 
 (defun jest-ts/get--current-test-name-and-point ()
-  "Extract the current test name using Treesit."
+  "Extract the current test name and position using Treesit.
+Uses the treesit parser to find the enclosing test or describe block.
+Returns a list of (test-name position) or nil if not in a test."
   (if (region-active-p)
       (buffer-substring-no-properties (region-beginning) (region-end))
     (when (treesit-ready-p 'typescript)
@@ -217,13 +232,19 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
                 node-start-point)))))
 
 (defun string-node-string-fragment (node)
+  "Extract string content from a string NODE.
+Handles both simple string nodes and binary expressions.
+Returns the extracted string content."
   (cond
    ((string= (treesit-node-type node) "string")
     (treesit-node-text (nth 1 (treesit-node-children node)) t))
    ((string= (treesit-node-type node) "binary_expression") (binary--exp-to-string node))
-   (t (error "bad string node type"))))
+   (t (error "Bad string node type"))))
 
 (defun binary--exp-to-string (node)
+  "Convert a binary expression NODE to a string.
+Extracts and concatenates string fragments from the binary expression.
+Returns the combined string."
   (mapconcat (lambda (child)
                (substring-no-properties
                 (treesit-node-text
@@ -231,6 +252,9 @@ TEST-FILE-NAME-AND-PATTERN is a plist with optional
              (treesit-node-children node "arguments")))
 
 (defun template--node-to-string (node)
+  "Convert a template string NODE to a string.
+Extracts and concatenates all parts of the template string.
+Returns the combined string."
   (mapconcat #'treesit-node-text
              (treesit-node-children node "arguments")))
 
@@ -253,17 +277,26 @@ Returns a cons cell (test-name . test-point)."
     (error "No tests definition found in file")))
 
 (defun get-nodes-by-type (node type)
-  "Get child nodes of NODE with specified TYPE."
+  "Get child nodes of NODE with specified TYPE.
+NODE is a treesit node to search within.
+TYPE is a string representing the node type to find.
+Returns a list of matching child nodes."
   (-filter (lambda (child) (equal (treesit-node-type child) type))
            (treesit-node-children node)))
 
 (defun get-first-node-by-type (node type)
-  "Get first child node of NODE with specified TYPE."
+  "Get first child node of NODE with specified TYPE.
+NODE is a treesit node to search within.
+TYPE is a string representing the node type to find.
+Returns the first matching child node or nil if none found."
   (-find (lambda (child) (equal (treesit-node-type child) type))
          (treesit-node-children node)))
 
 (defun get-node-text (node)
-  "Extract text from a describe/test node."
+  "Extract text from a describe/test NODE.
+Handles different types of string nodes:
+ (string literals, binary expressions, template strings).
+Returns the extracted string content."
   (let* ((args (cadr (treesit-node-children node)))
          (string-node (get-first-node-by-type args "string"))
          (binary-node (get-first-node-by-type args "binary_expression"))
@@ -275,13 +308,18 @@ Returns a cons cell (test-name . test-point)."
           (t (error "Bad node type: %s" (treesit-node-text args))))))
 
 (defun get-body-node (node)
-  "Get the body node from a describe/test node."
+  "Get the body node from a describe/test NODE.
+Extracts the statement block from the arrow function in the node.
+Returns the statement block node or nil if not found."
   (let* ((args (cadr (treesit-node-children node)))
          (arrow-function (get-first-node-by-type args "arrow_function")))
     (get-first-node-by-type arrow-function "statement_block")))
 
 (defun jest-ts/get--call-expressions (root-node call-type)
-  "Get all CALL-TYPE nodes from ROOT-NODE."
+  "Get all CALL-TYPE nodes from ROOT-NODE.
+ROOT-NODE is a treesit node to search within.
+CALL-TYPE is a string like \"describe\", \"test\", or \"it\".
+Returns a list of call expression nodes matching CALL-TYPE."
   (when-let* ((expression-statements (get-nodes-by-type root-node "expression_statement"))
               (call-expressions (-flatten
                                  (mapcar (lambda (expr)
@@ -294,7 +332,9 @@ Returns a cons cell (test-name . test-point)."
              call-expressions)))
 
 (defun jest-ts/map--describe-nodes (root-node level)
-  "Map describe and test nodes in ROOT-NODE at specified LEVEL."
+  "Map describe and test nodes in ROOT-NODE at specified LEVEL.
+Returns a tree structure representing the hierarchy of describe and test blocks.
+Each node in the tree contains type (describe or test), name, position, and body for describe blocks."
   (let* ((describe-expressions (jest-ts/get--call-expressions root-node "describe"))
          (all-expressions
           (->> (append describe-expressions
@@ -325,7 +365,10 @@ Returns a cons cell (test-name . test-point)."
                    all-expressions)))))
 
 (defun jest-ts/flatten--test-tree (tree &optional prefix)
-  "Convert test TREE into a flat list of (display name position) lists."
+  "Convert test TREE into a flat list of (display name position) lists.
+TREE is the hierarchical structure returned by `jest-ts/map--describe-nodes'.
+PREFIX is an optional string to prepend to each display name.
+Returns a list where each element is (display-name test-name position)."
   (let* ((level (alist-get 'level tree))
          (indent (make-string (* level 2) ?\s))
          (prefix (or prefix ""))
@@ -334,7 +377,7 @@ Returns a cons cell (test-name . test-point)."
     ;; Process each node and collect results in a proper list
     (dolist (node nodes)
       (pcase (alist-get 'type node)
-        ('describe 
+        ('describe
          (push (list (format "%s%s[%s] %s"
                              prefix
                              indent
@@ -364,7 +407,7 @@ Returns a cons cell (test-name . test-point)."
     (treesit-parse-string 'typescript)))
 
 (ert-deftest jest-ts/create-tests-tree ()
-  "Return a list of candidates that represents the test suite hierarchy using indentation and prefixes for test/describe headings"
+  "Return a list of candidates that represents the test suite hierarchy using indentation and prefixes for test/describe headings."
   (should (equal (jest-ts/map--describe-nodes *jest-ts/test-file-ts-node* 0)
                  '((level . 0)
                    (nodes ((type . describe)
@@ -384,7 +427,7 @@ Returns a cons cell (test-name . test-point)."
                            (body)))))))
 
 (ert-deftest jest-ts/flatten-tests-tree ()
-  "Return a flat list of candidates that represents the test suite hierarchy using indentation and prefixes for test|describe headings"
+  "Return a flat list of candidates that represents the test suite hierarchy using indentation and prefixes for test|describe headings."
   (should (equal (jest-ts/flatten--test-tree '((level . 0)
                                                (nodes . (((type . describe)
                                                           (name . "Describe 1")
@@ -420,7 +463,7 @@ Returns a cons cell (test-name . test-point)."
                    ("[📘] Describe 2" "Describe 2" 200)))))
 
 (ert-deftest jest-ts/map-describe-and-flatten-tree ()
-  "Return a flat list of candidates that represents the test suite hierarchy using indentation and prefixes for test|describe headings"
+  "Return a flat list of candidates that represents the test suite hierarchy using indentation and prefixes for test|describe headings."
   (let* ((tree (jest-ts/map--describe-nodes *jest-ts/test-file-ts-node* 0))
          (flattened (jest-ts/flatten--test-tree tree))
          ;; Extract just the first two elements for comparison, ignoring positions
