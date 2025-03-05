@@ -91,7 +91,7 @@ Should be an alist of (VARIABLE . VALUE) pairs."
   "Run the latest test when it exists."
   (interactive)
   (if-let ((*latest-test*)
-           (default-directory (nth 2 *latest-test*))
+           (default-directory (nth 3 *latest-test*))
            (file-name (car *latest-test*))
            (test-name (nth 1 *latest-test*))
            (process-environment (copy-sequence process-environment)))
