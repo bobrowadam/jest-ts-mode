@@ -110,6 +110,7 @@ With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
                     (cdr env-var))
             process-environment))
     (jest-ts/persist-latest-test test-file-name (list test-name test-point))
+    (jest-ts/jump-to-latest-test)
     (compile (jest-ts/test--command
               default-directory
               `(:file-name ,test-file-name :test-name ,test-name))
