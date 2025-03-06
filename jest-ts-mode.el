@@ -48,6 +48,9 @@ Added as a hook to `compilation-filter-hook'."
 (define-compilation-mode jest-ts/compilation-mode "Jest Compilation"
   "Compilation mode for Jest output."
   (add-hook 'compilation-filter-hook 'jest-ts/test-colorize-compilation-buffer nil nil))
+(define-key jest-ts/compilation-mode-map (kbd "C-c C-t C-r") 'jest-ts/rerun-latest-test)
+(define-key jest-ts/compilation-mode-map (kbd "C-c C-t C-j") 'jest-ts/jump-to-latest-test)
+(define-key jest-ts/compilation-mode-map (kbd "C-c C-t C-b") 'jest-ts/jump-to-compilation-buffer)
 
 (defun jest-ts/read--file (file-name)
   "Return the contents of FILE-NAME as a string.
@@ -101,7 +104,6 @@ With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
          (test-point (cdr test-info))
          (test-file-name (buffer-file-name))
          (process-environment (copy-sequence process-environment)))
-    ;; Add environment variables to process-environment
     (dolist (env-var jest-ts/environment-variables)
       (push (format "%s=%s"
                     (car env-var)
@@ -475,6 +477,15 @@ Returns a list where each element is (display-name test-name position)."
                      ("  [✅] Describe 1 test 2" "Describe 1 test 2")
                      ("[📘] Describe 2" "Describe 2"))))))
 
+(defun jest-ts/jump-to-compilation-buffer ()
+  "Jump to the Jest compilation buffer if it exists.
+If the buffer doesn't exist, display a message."
+  (interactive)
+  (let ((buffer-name (compilation-buffer-name "jest-ts/compilation" nil nil)))
+    (if (get-buffer buffer-name)
+        (pop-to-buffer buffer-name)
+      (message "No Jest compilation buffer found"))))
+
 ;;;###autoload
 (define-minor-mode jest-ts-mode
   "Minor mode for running Jest tests in TypeScript files."
@@ -483,7 +494,8 @@ Returns a list where each element is (display-name test-name position)."
   :keymap `((,(kbd "C-c C-t C-p") . jest-ts/run-test-at-point)
             (,(kbd "C-c C-t C-r") . jest-ts/rerun-latest-test)
             (,(kbd "C-c C-t C-n") . jest-ts/run-tests)
-            (,(kbd "C-c C-t C-j") . jest-ts/jump-to-latest-test))
+            (,(kbd "C-c C-t C-j") . jest-ts/jump-to-latest-test)
+            (,(kbd "C-c C-t C-b") . jest-ts/jump-to-compilation-buffer))
   :group 'jest-ts)
 
 (provide 'jest-ts-mode)
