@@ -129,10 +129,10 @@ With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
         (dolist (env-var jest-ts/environment-variables)
           (push (format "%s=%s" (car env-var) (cdr env-var)) process-environment))
         (compile (jest-ts/test--command default-directory
-                                       (list :file-name
-                                             file-name
-                                             :test-name
-                                             test-name))
+                                        (list :file-name
+                                              file-name
+                                              :test-name
+                                              test-name))
                  'jest-ts/compilation-mode))
     (error "Could not rerun latest test.
  *latest-test*: %s
@@ -178,12 +178,12 @@ Returns the directory path or signals an error if not found."
           (push (format "%s=%s" (car env-var) (cdr env-var)) process-environment))
         (jest-ts/persist-latest-test test-file-name test-name-and-point)
         (compile (jest-ts/test--command default-directory
-                                       (list :file-name
-                                             test-file-name
-                                             :test-name
-                                             (car test-name-and-point)
-                                             :test-point
-                                             (cadr test-name-and-point) ))
+                                        (list :file-name
+                                              test-file-name
+                                              :test-name
+                                              (car test-name-and-point)
+                                              :test-point
+                                              (cadr test-name-and-point) ))
                  'jest-ts/compilation-mode))
     (error "Could not run test at point:
 test-name: %s
@@ -336,8 +336,10 @@ Returns a list of call expression nodes matching CALL-TYPE."
 
 (defun jest-ts/map--describe-nodes (root-node level)
   "Map describe and test nodes in ROOT-NODE at specified LEVEL.
-Returns a tree structure representing the hierarchy of describe and test blocks.
-Each node in the tree contains type (describe or test), name, position, and body for describe blocks."
+Returns a tree structure representing the hierarchy of
+describe and test blocks.
+Each node in the tree contains type (describe or test),
+name, position, and body for describe blocks."
   (let* ((describe-expressions (jest-ts/get--call-expressions root-node "describe"))
          (all-expressions
           (->> (append describe-expressions
