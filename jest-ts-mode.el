@@ -91,7 +91,8 @@ Should be an alist of (VARIABLE . VALUE) pairs."
 
 (defcustom jest-ts/inspect-port 9229
   "The port for the node js inspector."
-  :type '(number :tag "Port number")
+  :type '(choice (number :tag "Port number")
+                 (function :tag "Function that returns the port number"))
   :group 'jest-ts)
 
 ;;;###autoload
@@ -203,7 +204,9 @@ Returns a shell command string that can be passed to `compile'."
          (test-name (plist-get test-file-name-and-pattern :test-name)))
     (->>
      (format "node --inspect=%s %s --config %sjest.config.ts %s %s"
-             jest-ts/inspect-port
+             (if (functionp jest-ts/inspect-port)
+                 (funcall jest-ts/inspect-port)
+                 jest-ts/inspect-port)
              (funcall jest-ts/jest-command-fn)
              jest-config-dir
              file-name
