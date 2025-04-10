@@ -94,6 +94,7 @@ Should be an alist of (VARIABLE . VALUE) pairs."
   :type '(number :tag "Port number")
   :group 'jest-ts)
 
+;;;###autoload
 (defun jest-ts/run-tests (describe-only)
   "Run a specific test from the current file.
 With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
@@ -116,6 +117,7 @@ With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
               `(:file-name ,test-file-name :test-name ,test-name))
              'jest-ts/compilation-mode)))
 
+;;;###autoload
 (defun jest-ts/rerun-latest-test ()
   "Run the latest test when it exists."
   (interactive)
@@ -140,6 +142,7 @@ With prefix argument DESCRIBE-ONLY, only show describe blocks for selection."
            *latest-test*
            default-directory)))
 
+;;;###autoload
 (defun jest-ts/jump-to-latest-test ()
   "Jump to the latest test definition when it exists."
   (interactive)
@@ -165,6 +168,7 @@ Returns the directory path or signals an error if not found."
       (error "No jest-config found.  default directory: %s"
              default-directory)))
 
+;;;###autoload
 (defun jest-ts/run-test-at-point ()
   "Run the enclosing test around point."
   (interactive)
@@ -480,6 +484,7 @@ Returns a list where each element is (display-name test-name position)."
                      ("  [✅] Describe 1 test 2" "Describe 1 test 2")
                      ("[📘] Describe 2" "Describe 2"))))))
 
+;;;###autoload
 (defun jest-ts/jump-to-compilation-buffer ()
   "Jump to the Jest compilation buffer if it exists.
 If the buffer doesn't exist, display a message."
